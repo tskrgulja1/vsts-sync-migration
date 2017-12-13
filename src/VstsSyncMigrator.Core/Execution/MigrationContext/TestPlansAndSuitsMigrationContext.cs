@@ -7,7 +7,10 @@ using VstsSyncMigrator.Engine.ComponentContext;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
+using System.Globalization;
+using Microsoft.TeamFoundation.WorkItemTracking.WebApi.Models;
 using VstsSyncMigrator.Engine.Configuration.Processing;
+using WorkItem = Microsoft.TeamFoundation.WorkItemTracking.Client.WorkItem;
 
 namespace VstsSyncMigrator.Engine
 {
@@ -185,6 +188,8 @@ namespace VstsSyncMigrator.Engine
                     targetPlan.Save();
                 }
             }
+            FixQueryBasedSuite(targetPlan, targetSuitChild);
+
             // Recurse if Static Suite
             if (sourceSuit.TestSuiteType == TestSuiteType.StaticTestSuite && HasChildSuits(sourceSuit))
             {
@@ -197,6 +202,47 @@ namespace VstsSyncMigrator.Engine
             }
             // Add Test Cases
             ProcessChildTestCases(sourceSuit, targetSuitChild, targetPlan);
+        }
+
+        /// <summary>
+        /// Fix work item ID's in query based suites
+        /// </summary>
+        private void FixQueryBasedSuite(ITestPlan targetPlan, ITestSuiteBase targetSuitChild)
+        {
+            if (targetSuitChild.TestSuiteType == TestSuiteType.DynamicTestSuite)
+            {
+                var dynamic = (IDynamicTestSuite) targetSuitChild;
+
+                if (
+                    CultureInfo.InvariantCulture.CompareInfo.IndexOf(dynamic.Query.QueryText, "[System.Id]",
+                        CompareOptions.IgnoreCase) >= 0)
+                {
+                    string regExSearchForSystemId = @"(\[System.Id\]\s*=\s*[\d]*)";
+                    string regExSearchForSystemId2 = @"(\[System.Id\]\s*IN\s*)";
+
+                    MatchCollection matches = Regex.Matches(dynamic.Query.QueryText, regExSearchForSystemId, RegexOptions.IgnoreCase);
+
+                    foreach (Match match in matches)
+                    {
+                        var qid = match.Value.Split('=')[1].Trim();
+                        var targetWI = targetWitStore.FindReflectedWorkItemByReflectedWorkItemId(qid,
+                            me.ReflectedWorkItemIdFieldName);
+
+                        if (targetWI == null)
+                        {
+                            Trace.WriteLine("TODO");
+                        }
+                        else
+                        {
+                            Trace.WriteLine("Fixing [System.Id] in query in test suite '" + dynamic.Title + "' from " + qid + " to " + targetWI.Id, Name);
+                            dynamic.Refresh();
+                            dynamic.Repopulate();
+                            dynamic.Query = targetTestStore.Project.CreateTestQuery(dynamic.Query.QueryText.Replace(match.Value, string.Format("[System.Id] = {0}", targetWI.Id)));
+                            targetPlan.Save();
+                        }
+                    }
+                }
+            }
         }
 
         private void FixAssignedToValue(int sourceWIId, int targetWIId)
@@ -212,9 +258,8 @@ namespace VstsSyncMigrator.Engine
             if (CanSkipElementBecauseOfTags(source.Id))
                 return;
 
-            if (source.TestSuiteType == TestSuiteType.StaticTestSuite && HasChildTestCases(source))
-            {
-                Trace.WriteLine(string.Format("            Suite has {0} test cases", ((IStaticTestSuite)source).TestCases.Count), "TestPlansAndSuites");
+
+                Trace.WriteLine(string.Format("            Suite has {0} test cases", source.TestCases.Count), "TestPlansAndSuites");
                 List<ITestCase> tcs = new List<ITestCase>();
                 foreach (ITestSuiteEntry sourceTestCaseEntry in source.TestCases)
                 {
@@ -240,16 +285,27 @@ namespace VstsSyncMigrator.Engine
                     else
                     {
                         ITestCase targetTestCase = targetTestStore.Project.TestCases.Find(wi.Id);
-                        ApplyConfigurations(sourceTestCaseEntry, targetTestCase.TestSuiteEntry);
-                        tcs.Add(targetTestCase);
-                        Trace.WriteLine(string.Format("    ADDING {0} : {1} - {2} ", sourceTestCaseEntry.EntryType.ToString(), sourceTestCaseEntry.Id, sourceTestCaseEntry.Title), "TestPlansAndSuites");
+                        if (targetTestCase == null)
+                        {
+                            Trace.WriteLine(string.Format("    ERROR TEST CASE NOT FOUND {0} : {1} - {2} ", sourceTestCaseEntry.EntryType, sourceTestCaseEntry.Id, sourceTestCaseEntry.Title), "TestPlansAndSuites");
+                        }
+                        else
+                        {
+                            ApplyConfigurations(sourceTestCaseEntry, targetTestCase.TestSuiteEntry);
+                            tcs.Add(targetTestCase);
+                            Trace.WriteLine(string.Format("    ADDING {0} : {1} - {2} ", sourceTestCaseEntry.EntryType.ToString(), sourceTestCaseEntry.Id, sourceTestCaseEntry.Title), "TestPlansAndSuites");
+                        }
                     }
                 }
+
+            if (source.TestSuiteType == TestSuiteType.StaticTestSuite && HasChildTestCases(source))
+            {
                 target.TestCases.AddCases(tcs);
-                targetPlan.Save();
+            }
+
+            targetPlan.Save();
                 Trace.WriteLine(string.Format("    SAVED {0} : {1} - {2} ", target.TestSuiteType.ToString(), target.Id, target.Title), "TestPlansAndSuites");
 
-            }
         }
 
         private void ApplyConfigurations(ITestSuiteBase source, ITestSuiteBase target)
@@ -284,10 +340,11 @@ namespace VstsSyncMigrator.Engine
         {
             int SourceConfigCount = sourceEntry.Configurations != null ? sourceEntry.Configurations.Count : 0;
             int TargetConfigCount = targetEntry.Configurations != null ? targetEntry.Configurations.Count : 0;
-            
-                if (SourceConfigCount != TargetConfigCount)
+            var deviations = SourceConfigCount > 0 && TargetConfigCount > 0 && sourceEntry.Configurations.Select(x => x.Name).Intersect(targetEntry.Configurations.Select(x => x.Name)).Count() < SourceConfigCount;
+
+                if ((SourceConfigCount != TargetConfigCount) || deviations)
                 {
-                    Trace.WriteLine(string.Format("   CONFIG MNISSMATCH FOUND --- FIX AATTEMPTING"), "TestPlansAndSuites");
+                    Trace.WriteLine(string.Format("   CONFIG MISMATCH FOUND --- FIX ATTEMPTING"), "TestPlansAndSuites");
                     if (targetEntry.Configurations != null)
                     {
                         targetEntry.Configurations.Clear();
