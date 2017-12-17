@@ -5,6 +5,11 @@ namespace VstsSyncMigrator.Engine.Configuration.Processing
 {
     public class HtmlFieldEmbeddedImageMigrationConfig : ITfsProcessingConfig
     {
+        public string Status
+        {
+            get { return "Experimental"; }
+        }
+
         public bool Enabled { get; set; }
 
         public Type Processor
