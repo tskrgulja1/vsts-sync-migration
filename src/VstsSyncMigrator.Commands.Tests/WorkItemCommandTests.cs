@@ -11,12 +11,14 @@ namespace VstsSyncMigrator.Commands.Tests
         [TestMethod]
         public void TestWorkItemCommandRuns()
         {
-            string[] args = {"moo", "-c", "http://moo.mo"};
+            string[] args = {"--sourceTeamProject", "moo", "--sourceCollection", "http://moo.mo"};
             WorkItemMigrationCommand command = new WorkItemMigrationCommand();
             int result = Parser.Default.ParseArguments<WorkItemMigrationOptions>(args).MapResult(
                 options => command.RunAndReturnExitCode(options),
                errs => 1);
             Assert.AreEqual(0, result);
         }
+
+
     }
 }

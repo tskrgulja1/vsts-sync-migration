@@ -9,6 +9,6 @@ namespace VstsSyncMigrator.Commands
 {
     public class OptionsBase
     {
-      
+       
     }
 }
