@@ -10,7 +10,13 @@ The VSTS Sync Migration tools allow you to bulk edit and migrate data between Te
 - Migrate Work Items & Test Management from one account or collection to another
 - Assist in changing process templates
 
-There are many other uses that you might put the tools to but migrating your enitre TFS Collection to VSTS is not one of them. You should also consider the [VSTS Migration Service](https://www.visualstudio.com/team-services/migrate-tfs-vsts/) from Microsoft.
+## Supported Paths
+
+ - TFS -> TFS
+ - TFS -> VSTS
+ - VSTS -> TFS (However please email us on contact [at] nkdagility.com to discuss why)
+
+There are many other uses that you might put the tools to but migrating your enitre TFS Collection to VSTS is not one of them. You should also consider the [VSTS Migration Service](https://www.visualstudio.com/team-services/migrate-tfs-vsts/) from Microsoft. If you need help then please get in touch at contact [at] nkdagility.com.
 
 ## Quick Links
 
